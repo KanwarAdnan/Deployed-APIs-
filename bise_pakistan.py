@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup as bs4
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from time import time
 
 class HtmlFetcher:
   def get_html(self , html_fetcher , roll_no):
@@ -151,6 +152,44 @@ class BiseLahoreParser:
   def get_result(self, html):
     return self.parse_html(html)
 
+class BiseRawalpindi:
+  def __init__(self, url = "https://results.biserawalpindi.edu.pk/Result_Detail?p={}&q=2&r=2018"):
+    self.url = url
+
+  def get_html(self,  roll_no: int):
+    result_url = self.url.format(roll_no)
+    response = requests.get(result_url)
+    return response.content
+
+class BiseRawalpindiParser:
+  def get_result(self , html):
+
+    soup = bs4(html,'html.parser')
+    spans = soup.findAll("span")
+    spans.pop(0)
+
+    info = {"session_info": spans[0].text,
+    "roll_no": int(spans[1].text),
+    "name": spans[2].text,
+    "student_type": spans[3].text,
+    "grand_total": int(spans[4].text),
+    "status": spans[5].text,
+    "form_id": spans[6].text
+    }
+
+    marks = {}
+    headers = ["9th","10th","Practical","Status"]
+    counter = 7
+    while True:
+      pre_counter = counter
+      counter += 5
+      if counter <= len(spans):
+        marks[spans[pre_counter].text] = {headers[i]: j.text for i , j in enumerate(spans[pre_counter + 1 : counter])}
+      else:
+        break
+    info.update({"marks" : marks})
+    return info
+
 app = FastAPI()
 origins = ["*"]
 app.add_middleware(
@@ -165,11 +204,22 @@ biselahore = BiseLahore()
 biselahore_parser = BiseLahoreParser()
 html_fetcher = HtmlFetcher()
 data_processor = DataProcessor()
+biserawalpindi = BiseRawalpindi()
+biserawalpindi_parser = BiseRawalpindiParser()
 
-@app.get(path="/{roll_no}")
-async def deep_search(roll_no: int):
-  html = html_fetcher.get_html(biselahore , roll_no)
-  result = data_processor.get_result(biselahore_parser , html)
+@app.get(path="/{board}/{roll_no}")
+async def board_search(board: str, roll_no: int):
+  board = board.lower()
+
+  html = "html_fetcher.get_html({} , {})"
+  result = "data_processor.get_result({}_parser , {})"
+
+  html = html.format(board, roll_no)
+  html = eval(html)
+
+  result = result.format(board , html)
+  result = eval(result)
+
   return result
 
 @app.get(path="/")
